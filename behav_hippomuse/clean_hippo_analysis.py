@@ -144,11 +144,14 @@ def GLM (file, score, stat, ind_var, Level, betas=1):
 
 
     # Cross validation GLM LOOCV
+    """tras = train accuracy test; teas=test accuray set"""
     kf = KFold(Y.shape[0], n_folds=Y.shape[0])
     predictions = []
     rsquares = []
-    tas = []
+    tras= []
     confus = []
+
+    cm_shape_max = int(np.max(db[score])+1)
 
     for train_index, test_index in kf:
         olsmodel = sm.OLS(Y[train_index], X[train_index])
@@ -156,26 +159,28 @@ def GLM (file, score, stat, ind_var, Level, betas=1):
         pred = np.dot(X[train_index], results.params)
         pred = np.round(pred)
         pred[pred < 0] = 0
-        pred[pred > 5] = 5
+        # No kids had more than 5 in P2
+        # pred[pred > 5] = 5
         ta = np.sum(Y[train_index] == pred) / float(len(Y[train_index]))
-        tas.append(ta)
+        tras.append(ta)
         cm = confusion_matrix(Y[train_index], pred)
         cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
         cm[isnan(cm)] = 0
-        if cm.shape[0] == 13:
+        if cm.shape[0] == cm_shape_max:
             confus.append(cm)
         rsquares.append(results.rsquared)
         prediction = np.dot(X[test_index], results.params)
         predictions.append(prediction)
     predictions = np.ravel(predictions)
     confus = np.mean(confus, axis=0)
-    plot_confusion_matrix(confus, title='Mean confusion matrix%s for %s'%(stat, score))
-    plt.savefig('Mean confusion matrix_%s for %s_.png '%(stat,score))
+    plot_confusion_matrix(confus, title="Mean confusion matrix_" + stat + "_for_" + score)
+    plt.savefig(os.path.join(stat, score,'Mean_confusion_matrix_'+ stat +"_"+ score + ".png"))
     plt.close()
 
     predictions =  np.round(predictions)
     predictions[predictions<0]=0
-    predictions[predictions>5]=5
+    #predictions[predictions>5]=5
+
 
     cvrsq = 1 - (np.sum((Y - predictions)**2)/np.sum((Y - np.mean(Y))**2))
     # print(stat)
@@ -197,21 +202,19 @@ def GLM (file, score, stat, ind_var, Level, betas=1):
     np.set_printoptions(precision=2)
     print('Confusion matrix, without normalization')
     print(cm)
-    total_accuracy = np.sum(Y==predictions)/float(len(Y))
+    teas = np.sum(Y==predictions)/float(len(Y))
     somme=[]
     diagnonal = np.diagonal(cm)
 
     for i  in range(len(diagnonal)):
         somme.append((diagnonal[i]/np.sum(cm[:,i]))*100)
     category= np.array(somme)
+
     NanValue = isnan(category)
     category[NanValue]=0
-    # plt.bar(range(6),category)
-    # plt.ylabel("accuracy for " + stat)
-    # plt.show()
     plt.figure()
-    plot_confusion_matrix(cm, title='confusion matrix'+stat)
-    plt.savefig('confusion matrix_%s for %s_.png '%(stat,score))
+    plot_confusion_matrix(cm, title='confusion matrix_'+ stat + "_"+ score)
+    plt.savefig(os.path.join(stat, score,"confusion_matrix_" + stat +"_"+ score + ".png"))
     plt.close()
     
     # Normalized confusion matrix
@@ -219,9 +222,8 @@ def GLM (file, score, stat, ind_var, Level, betas=1):
     print('Normalized confusion matrix')
     print(cm_normalized)
     plt.figure()
-    plot_confusion_matrix(cm_normalized, title='Normalized confusion matrix %s for %s'%(stat, score))
-    plt.show()
-    plt.savefig('Normalized confusion matrix %s for %s_.png '%(stat,score))
+    plot_confusion_matrix(cm_normalized, title='Normalized confusion matrix_' + stat + "_"+ score)
+    plt.savefig(os.path.join(stat, score, 'Normalized_confusion_matrix' + stat +"_"+ score + "_.png"))
     plt.close()
 
 
@@ -269,31 +271,9 @@ def GLM (file, score, stat, ind_var, Level, betas=1):
         ax.text(rect.get_x() + rect.get_width()/2, height + 2, label, ha='center', va='bottom', weight= 'light', size= 'xx-small')
     plt.savefig(os.path.join(stat, score, score + "_" + stat + "_" + brain_type + "_" + ".png"))
     plt.close()
-    
-    return df_final, db, betas_component , pvals, cvrsq, tas, category, total_accuracy
 
-# def linearplot(X, Y, df):
-    
-#     # Select x and y 
-#     x = np.array(df[X])
-#     y = np.array(df[Y])
+    return df_final, db, betas_component , pvals, cvrsq, tras, category, teas
 
-#      # Run the regression
-#     beta, beta0, r_value, p_value, std_err = stats.linregress(x, y)
-#     print("y=%f x + %f, r:%f, r-squared:%f, \np-value:%f, std_err:%f"
-#     % (beta, beta0, r_value, r_value**2, p_value, std_err))
-
-
-#     # Plot the line
-#     yhat = beta * x + beta0  # regression line
-#     plt.plot(x, yhat, 'r-', x, y, 'o')
-#     plt.xticks(x)
-#     plt.ylabel(y)
-#     #plt.show()
-#     plt.savefig(x+ ""+ y + ".png")
-#     plt.close()
-
-#     return betas_component
 
 # Correlation function to annotate plots in Grids
 def corrfunc(x, y, **kws):
@@ -305,6 +285,7 @@ def corrfunc(x, y, **kws):
 def undestand_component(pca, RD, stat, betas_component,score):
 
     # Histogram betas component back to the original space
+    
     roi_betas = pca.inverse_transform(betas_component)
     order = roi_betas.argsort()[::-1]
     roi_beta, x , ordlabel = plot_hist(roi_betas , stat, score, title="GLM")
@@ -328,7 +309,6 @@ def undestand_component(pca, RD, stat, betas_component,score):
     plt.set_cmap('spectral')
     plt.colorbar()
     plt.savefig(os.path.join(stat, stat + "_component_contribution_for_each_region_.png"))
-    plt.show()
     plt.close()
 
 
@@ -352,7 +332,6 @@ def undestand_component(pca, RD, stat, betas_component,score):
     g = g.map_upper(plt.scatter)
     g = g.map_lower(sns.kdeplot)
     g = g.map_lower(corrfunc)
-    plt.show()
     plt.savefig(os.path.join(stat,"PCA_compo_capturing_features_between_subject_" + stat + ".png"))
     plt.close()
 
@@ -381,7 +360,6 @@ def undestand_component(pca, RD, stat, betas_component,score):
 
         sns.heatmap(combineddf.corr()[selecroi].loc[comp_columns], annot=False )
         plt.subplots_adjust(bottom=0.40)
-        plt.show()
         plt.savefig(os.path.join(stat,"PCA_compo_roi_heatmap_"+ str(idx) + stat + ".png"))
         plt.close()
     # # Plot heatmap of component and ROI correlations
@@ -414,13 +392,13 @@ if __name__ == '__main__':
     clinical_variables = ["chimiotherapie", "DVP","age", "age_at_chirurgie"]
 
 
-    df_Rsqures = pd.DataFrame(columns= ["Statistic","Cross validation Rsquare", "Rsquare distribution", "Analysis level"])
-    Statistic = []
-    CVRsq = []
-    Rsquares = []
-    Level_analysis = []
-    accuracy =[]
-    list_total_accuracy=[]
+    df_cross_validation = pd.DataFrame(columns= ["Statistic","Cross validation Rsquare", "train set accuracy", "Analysis level", "test set total accuracy" , "Score hippomuse"])
+    list_statistic = []
+    list_CVRsq = []
+    list_tras = []
+    list_levelanalysis = []
+    list_teas=[]
+    list_score=[]
 
 
     #df_corr_var = pd.DataFrame(columns=["component_01","component_02","component_03","component_04","component_05","component_06", "component_07","chimiotherapie","chirurgie_delay_bilan","age_at_chirurgie" , "DVP", "VCS", "age"] )
@@ -429,13 +407,16 @@ if __name__ == '__main__':
     # for f, score in itertools.product(Files, scores):
     #     stat = f.split('_')[3].split('.')[0]
 
-    for f in Files[6:7]:
+    for f in Files:
         stat = f.split('_')[4].split('.')[0]
         for score in Scores[9:10]:
             if stat == "presence":
                 brain_type = "presence"
-                df_final, db, betas_component, pvals , cvrsq, rsquares,category,total_accuracy = GLM (f, score, stat, ind_var, brain_type)
+                radiotherapie =["radiotherapie"]
+                ind_var = clinical_variables + radiotherapie
+                df_final, db, betas_component , pvals, cvrsq, tas, category, teas = GLM (f, score, stat, ind_var, brain_type)
                 corr = plot_corr(f, score, stat, ind_var, brain_type)
+
 
 
                 # patient_effect = ["groupe","age"]
@@ -462,184 +443,54 @@ if __name__ == '__main__':
                         save_name_rd = (db_name + '_RD_'+ stat + '.pkl')
                         RD = joblib.load(os.path.join(save_to, save_name_rd))
                         pca = joblib.load(os.path.join(save_to, save_name))
-                        
+                        print(stat )
+
+                        # figure of explained variance ratio cumsum
+                        plt.plot(pca.explained_variance_ratio_.cumsum())
+                        plt.savefig(os.path.join(stat, "PCA_explained_variance.png"))
+                        plt.close()
+
+
                         component_nb = [x+1 for x in range(len(pca.explained_variance_ratio_))]
                         component_variables = ["component_0%s"%(i) for i in component_nb]
                         ind_var = clinical_variables + component_variables
 
-                        df_final, db, betas_component, pvals , cvrsq, rsquares,category,total_accuracy = GLM (f, score, stat, ind_var, brain_type, betas=len(pca.explained_variance_ratio_))
+                        df_final, db, betas_component , pvals, cvrsq, tras, category, teas = GLM (f, score, stat, ind_var, brain_type, betas=len(pca.explained_variance_ratio_))
                         undestand_component(pca, RD, stat, betas_component, score)
-
-
-                        Statistic.append(stat)
-                        CVRsq.append(cvrsq)
-                        Rsquares.append(rsquares)
-                        Level_analysis.append(brain_type)
-                        accuracy.append(category)
-                        list_total_accuracy.append(total_accuracy)
-
-
-
-
-                #     if stat == "max":
-                #         ind_var = ["component_01","component_02","component_03","chimiotherapie", "DVP","age_at_chirurgie","age"]
-                #         df_final, db, betas_component, pvals , cvrsq, rsquares,category,total_accuracy= GLM (f, score, stat, ind_var, brain_type, betas=3)
-                #         Statistic.append(stat)
-                #         CVRsq.append(cvrsq)
-                #         Rsquares.append(rsquares)
-                #         Level_analysis.append(brain_type)
-                #         accuracy.append(category)
-                #         list_total_accuracy.append(total_accuracy)
-
-                #         save_to = os.path.join('preprocessed_hippomuse')
-                #         save_name = (db_name + '_PCA_' + stat + '.pkl')
-                #         save_name_rd = (db_name + '_RD_'+ stat + '.pkl')
-                #         undestand_component(save_to, save_name, stat, betas_component, score)
-
-
-
-                #         # # Find the contribution of the components on each region
-                #         # labels, names = read_roiLabel(os.path.join('lpba40.label.xml'))
-                #         # names.append('rest_brain')
-                #         # df = pd.DataFrame(columns=[names[x] for x in order.tolist()])
-                #         # list_repetition = [0] * len(betas_component)
-                #         # for idx, i in enumerate(range(len(list_repetition))):
-                #         #     new_list = list(list_repetition)
-                #         #     new_list[i] = 1
-                #         #     comp_betas = pca.inverse_transform(new_list)
-                #         #     # composante = [idx]
-                #         #     df.loc[len(df)] = comp_betas[order]
-                #         # plt.imshow(df, interpolation='nearest')
-                #         # plt.xticks(range(len(df.columns.tolist())), df.columns.tolist(), rotation='vertical')
-                #         # plt.yticks(range(len(list_repetition)))
-                #         # plt.set_cmap('spectral')
-                #         # plt.colorbar()
-                #         # plt.show()
-                #           # roires = pd.DataFrame(zip(roi_betas.tolist(), names, composante*len(names)), columns=["beta", "roi", "component"])
-                #             # roires.sort_values('beta', inplace=True, ascending=False)
-                       
-                #             # y, x = plot_hist(roi_betas, stat, score, component= idx, title="Components_%i"%(idx))
-
-
-                #         corr = plot_corr(f, score, stat, ind_var, brain_type)
-
-                #     if stat == "sum":
-                #         ind_var = ["component_01","component_02","component_03","component_04","component_05","chimiotherapie", "DVP","age_at_chirurgie", "age"]                
-                #         df_final, db, betas_component,pvals, cvrsq, rsquares,category ,total_accuracy= GLM (f, score, stat, ind_var, brain_type, betas=5)
-                #         Statistic.append(stat)
-                #         CVRsq.append(cvrsq)
-                #         Rsquares.append(rsquares)
-                #         Level_analysis.append(brain_type)
-                #         accuracy.append(category)
-                #         list_total_accuracy.append(total_accuracy)
-
-                #         # save_to = os.path.join('preprocessed_hippomuse')
-                #         # save_name = (db_name + '_PCA_' + stat + '.pkl')
-                #         # save_name_rd = (db_name + '_RD_'+ stat + '.pkl')
-                #         # undestand_component(save_to, save_name, stat, betas_component,score)
-
-
-                #         corr = plot_corr(f, score, stat, ind_var, brain_type)
-
-                #     if stat == "min":
-                #         ind_var = ["component_01","component_02","component_03","component_04","chimiotherapie", "DVP","age_at_chirurgie","age"]                
-                #         df_final, db, betas_component,pvals, cvrsq, rsquares,category,total_accuracy = GLM (f, score, stat, ind_var, brain_type, betas=4)
-                #         Statistic.append(stat)
-                #         CVRsq.append(cvrsq)
-                #         Rsquares.append(rsquares)
-                #         Level_analysis.append(brain_type)
-                #         accuracy.append(category)
-                #         list_total_accuracy.append(total_accuracy)
-
-                #         # save_to = os.path.join('preprocessed_hippomuse')
-                #         # save_name = (db_name + '_PCA_' + stat + '.pkl')
-                #         # save_name_rd = (db_name + '_RD_'+ stat + '.pkl')
-                #         # undestand_component(save_to, save_name, stat, betas_component,score)
                         
 
-                #         corr = plot_corr(f, score, stat, ind_var, brain_type)
+
+                        list_statistic.append(stat)
+                        print list_statistic 
+                        list_score.append(score)
+                        list_CVRsq.append(cvrsq)
+                        list_tras.append(tras)
+                        list_levelanalysis.append(brain_type)
+                        list_teas.append(teas)
 
 
-                #     if stat == 'var':
-                #         ind_var =["component_01","component_02","component_03","component_04","component_05","component_06", "component_07","chimiotherapie", "DVP","age_at_chirurgie" , "age"]
-                #         df_final, db , betas_component,pvals, cvrsq, rsquares,category,total_accuracy= GLM (f, score, stat, ind_var, brain_type, betas=7)
-                #         Statistic.append(stat)
-                #         CVRsq.append(cvrsq)
-                #         Rsquares.append(rsquares)
-                #         Level_analysis.append(brain_type)
-                #         accuracy.append(category)
-                #         list_total_accuracy.append(total_accuracy)
+    list_statistic = list(itertools.repeat(list_statistic,len(tras)))
+    list_score = list(itertools.repeat(list_score,len(tras)))
+    list_CVRsq = list(itertools.repeat(list_CVRsq,len(tras)))
+    list_levelanalysis= list(itertools.repeat(list_levelanalysis,len(tras)))
+    list_teas = list(itertools.repeat(list_teas,len(tras)))
+    df_cross_validation["Statistic"] = np.hstack(list_statistic)
+    df_cross_validation["Cross validation Rsquare"]= np.hstack(list_CVRsq)
+    df_cross_validation["train set accuracy"] = np.hstack(list_tras)
+    df_cross_validation["Analysis level"] = np.hstack(list_levelanalysis)
+    df_cross_validation["Score hippomuse"] = np.hstack(list_score)
+    df_cross_validation["test set total accuracy"] = np.hstack(list_teas)
+   
 
-                #         # save_to = os.path.join('preprocessed_hippomuse')
-                #         # save_name = (db_name + '_PCA_' + stat + '.pkl')
-                #         # save_name_rd = (db_name + '_RD_'+ stat + '.pkl')
-                #         # undestand_component(save_to, save_name, stat, betas_component,score)
-
-                #         corr = plot_corr(f, score, stat, ind_var, brain_type)
-
-                #     if stat == 'mean':
-                #         ind_var = ["component_01","component_02","component_03","chimiotherapie", "DVP","age_at_chirurgie", "age"]                
-                #         df_final, db, betas_component, pvals, cvrsq, rsquares ,category,total_accuracy= GLM (f, score, stat, ind_var, brain_type, betas=3)
-                #         Statistic.append(stat)
-                #         CVRsq.append(cvrsq)
-                #         Rsquares.append(rsquares)
-                #         Level_analysis.append(brain_type)
-                #         accuracy.append(category)
-                #         list_total_accuracy.append(total_accuracy)
-
-
-                #         # save_to = os.path.join('preprocessed_hippomuse')
-                #         # save_name = (db_name + '_PCA_' + stat + '.pkl')
-                #         # save_name_rd = (db_name + '_RD_'+ stat + '.pkl')
-                #         # undestand_component(save_to, save_name, stat, betas_component,score)
-
-                #         corr = plot_corr(f, score, stat, ind_var, brain_type)
-
-                #     if stat == 'median':
-                #         ind_var = ["component_01","component_02","component_03", "chimiotherapie", "DVP","age_at_chirurgie","age"]                
-                #         df_final, db, betas_component ,pvals, cvrsq, rsquares,category ,total_accuracy= GLM (f, score, stat, ind_var, brain_type, betas=3)
-                #         Statistic.append(stat)
-                #         CVRsq.append(cvrsq)
-                #         Rsquares.append(rsquares)
-                #         Level_analysis.append(brain_type)
-                #         accuracy.append(category)
-                #         list_total_accuracy.append(total_accuracy)
-
-                #         # save_to = os.path.join('preprocessed_hippomuse')
-                #         # save_name = (db_name + '_PCA_' + stat + '.pkl')
-                #         # save_name_rd = (db_name + '_RD_'+ stat + '.pkl')
-                #         # undestand_component(save_to, save_name, stat, betas_component,score)
-
-                #         corr = plot_corr(f, score, stat, ind_var, brain_type)
-
-                # else:
-
-                #     ind_var = ["radiotherapie", "chimiotherapie","age_at_chirurgie" ,"age","DVP"]
-                #     df_final, db, betas_component,pvals= GLM (f, score, stat, ind_var, brain_type)
-                #     # Statistic.append(stat)
-                #     # CVRsq.append(cvrsq)
-                #     # Rsquares.append(rsquares)
-                #     # Level_analysis.append(brain_type)
-
-                #     corr = plot_corr(f, score, stat, ind_var, brain_type)
-    # df_Rsqures["Statistic"] = Statistic
-    # df_Rsqures["Cross validation Rsquare"]= CVRsq
-    # df_Rsqures["Rsquare distribution"] = Rsquares
-    # df_Rsqures["Analysis level"] = Level_analysis
-
-    # # # Create plot for R sqaures
-    # # fig = plt.figure(1, figsize=(9, 6))
-    # # # Create an axes instance
-    # # ax = fig.add_subplot(111)
-    # # Create the boxplot
-    # A = np.vstack(Rsquares)
+    # Create the boxplot of accuracy distribution for model --> select only one score (ex.heure_2)
+    # A = np.vstack(list_tras)
     # Z = pd.DataFrame(A)
     # Z = Z.T
     # Z.columns = ['min', 'median', 'mean', 'max', 'sum', 'variance']
     # #Z.T.boxplot(vert=False)
 
     # fig, axes = plt.subplots(1, figsize=(8,4))
-    # df_tot_accu = pd.read_csv("Acurracy_hour.csv")
+    # df_tot_accu = pd.read_csv("Acurracy.csv")
     # g = sns.violinplot(data=Z, orient="h", palette="Set2")
 
     # for tick in g.xaxis.get_major_ticks():
@@ -654,23 +505,4 @@ if __name__ == '__main__':
 
 
 
-    #sns.swarmplot(data=df_tot_accu[df_tot_accu.Score=="total"], orient="h", color=".25")
-    #sns.factorplot(data=plo.T, orient="h", palette="Set2",ax=axes[1])
-
-
-
-        # for f in Files:
-
-        #     if f.split('_')[3].split('.')[0] == "presence":
-        #         print (f)
-        #         df = pd.read_csv(f)
-        #         score = f.split('_')[2]
-        #         ind_var = ["radiotherapie", "chimiotherapie", "chirurgie_delay_bilan", "age_at_chirurgie",  "DVP", "VCS", "age_diff_bilan"]
-
-        #          # plot linear plot
-        #         for idx , i in enumerate(ind_var):
-        #             sns.lmplot(x=ind_var[idx], y = "delta_"+score, data=df )
-        #             plt.savefig("plot" + "_"+ ind_var[idx]+ "_"+ "delta_"+score + ".png")
-        #             plt.close()
-        #     else:
-        #         continue
+   
