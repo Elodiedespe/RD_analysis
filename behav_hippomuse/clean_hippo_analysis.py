@@ -168,10 +168,12 @@ def GLM (file, score, stat, ind_var, Level, betas=1):
         cm[isnan(cm)] = 0
         if cm.shape[0] == cm_shape_max:
             confus.append(cm)
+
         rsquares.append(results.rsquared)
         prediction = np.dot(X[test_index], results.params)
         predictions.append(prediction)
     predictions = np.ravel(predictions)
+
     confus = np.mean(confus, axis=0)
     plot_confusion_matrix(confus, title="Mean confusion matrix_" + stat + "_for_" + score)
     plt.savefig(os.path.join(stat, score,'Mean_confusion_matrix_'+ stat +"_"+ score + ".png"))
@@ -212,19 +214,19 @@ def GLM (file, score, stat, ind_var, Level, betas=1):
 
     NanValue = isnan(category)
     category[NanValue]=0
-    plt.figure()
-    plot_confusion_matrix(cm, title='confusion matrix_'+ stat + "_"+ score)
-    plt.savefig(os.path.join(stat, score,"confusion_matrix_" + stat +"_"+ score + ".png"))
-    plt.close()
+    # # plt.figure()
+    # # plot_confusion_matrix(cm, title='confusion matrix_'+ stat + "_"+ score)
+    # # plt.savefig(os.path.join(stat, score,"confusion_matrix_" + stat +"_"+ score + ".png"))
+    # # plt.close()
     
-    # Normalized confusion matrix
-    cm_normalized = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
-    print('Normalized confusion matrix')
-    print(cm_normalized)
-    plt.figure()
-    plot_confusion_matrix(cm_normalized, title='Normalized confusion matrix_' + stat + "_"+ score)
-    plt.savefig(os.path.join(stat, score, 'Normalized_confusion_matrix' + stat +"_"+ score + "_.png"))
-    plt.close()
+    # # Normalized confusion matrix
+    # cm_normalized = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
+    # print('Normalized confusion matrix')
+    # print(cm_normalized)
+    # plt.figure()
+    # plot_confusion_matrix(cm_normalized, title='Normalized confusion matrix_' + stat + "_"+ score)
+    # plt.savefig(os.path.join(stat, score, 'Normalized_confusion_matrix' + stat +"_"+ score + "_.png"))
+    # plt.close()
 
 
 
@@ -360,7 +362,7 @@ def undestand_component(pca, RD, stat, betas_component,score):
 
         sns.heatmap(combineddf.corr()[selecroi].loc[comp_columns], annot=False )
         plt.subplots_adjust(bottom=0.40)
-        plt.savefig(os.path.join(stat,"PCA_compo_roi_heatmap_"+ str(idx) + stat + ".png"))
+        plt.savefig(os.path.join(stat,"PCA_compo_roi_heatmap_"+ str(idx) + stat + score+".png"))
         plt.close()
     # # Plot heatmap of component and ROI correlations
     # n_parts = 2
@@ -380,6 +382,7 @@ if __name__ == '__main__':
 
     db_name = "hippomuse_elotin"
     Path = "preprocessed_hippomuse"
+
     Files = glob.glob(os.path.join(Path, "*.csv"))
     Scores = ['reconnaissanceImageP1', 'reconnaissanceOdeurP1',
                'musique_P1', 'musique_P2', 'when_P1', 'heure_P1',
@@ -408,28 +411,11 @@ if __name__ == '__main__':
     #     stat = f.split('_')[3].split('.')[0]
 
     for f in Files:
+
         stat = f.split('_')[4].split('.')[0]
         for score in Scores[9:10]:
             if stat == "presence":
-                brain_type = "presence"
-                radiotherapie =["radiotherapie"]
-                ind_var = clinical_variables + radiotherapie
-                df_final, db, betas_component , pvals, cvrsq, tas, category, teas = GLM (f, score, stat, ind_var, brain_type)
-                corr = plot_corr(f, score, stat, ind_var, brain_type)
-
-
-
-                # patient_effect = ["groupe","age"]
-                # df_final, db,betas_component, pvals , cvrsq, rsquares,category,total_accuracy = GLM (f, score, stat, patient_effect, brain_type)
-
-
-                # g= sns.lmplot(x="age", y=score, data=db, hue="groupe", markers=["o", "x"], palette=['b','g'])
-                # plt.tick_params(labelsize=30)
-                # g.set_ylabels("When at recognition",size =30,color="black")
-                # g.set_xlabels("Age",size =30,color="black")    
-                # plt.show()
-                # plt.savefig("Patient_effect_" + score + "_" + stat + "_" + ".png")
-                # plt.close()                
+                print ("la")
 
 
 
@@ -447,8 +433,9 @@ if __name__ == '__main__':
 
                         # figure of explained variance ratio cumsum
                         plt.plot(pca.explained_variance_ratio_.cumsum())
-                        plt.savefig(os.path.join(stat, "PCA_explained_variance.png"))
                         plt.close()
+                        plt.savefig(os.path.join(stat, "PCA_explained_variance.png"))
+                        
 
 
                         component_nb = [x+1 for x in range(len(pca.explained_variance_ratio_))]
@@ -469,29 +456,34 @@ if __name__ == '__main__':
                         list_teas.append(teas)
 
 
-    list_statistic = list(itertools.repeat(list_statistic,len(tras)))
-    list_score = list(itertools.repeat(list_score,len(tras)))
-    list_CVRsq = list(itertools.repeat(list_CVRsq,len(tras)))
-    list_levelanalysis= list(itertools.repeat(list_levelanalysis,len(tras)))
-    list_teas = list(itertools.repeat(list_teas,len(tras)))
-    df_cross_validation["Statistic"] = np.hstack(list_statistic)
-    df_cross_validation["Cross validation Rsquare"]= np.hstack(list_CVRsq)
-    df_cross_validation["train set accuracy"] = np.hstack(list_tras)
-    df_cross_validation["Analysis level"] = np.hstack(list_levelanalysis)
-    df_cross_validation["Score hippomuse"] = np.hstack(list_score)
-    df_cross_validation["test set total accuracy"] = np.hstack(list_teas)
-   
+    # list_statistic = list(itertools.repeat(list_statistic,len(tras)))
+    # list_score = list(itertools.repeat(list_score,len(tras)))
+    # list_CVRsq = list(itertools.repeat(list_CVRsq,len(tras)))
+    # list_levelanalysis= list(itertools.repeat(list_levelanalysis,len(tras)))
+    # list_teas = list(itertools.repeat(list_teas,len(tras)))
+    # df_cross_validation["Statistic"] = np.hstack(list_statistic)
+    # df_cross_validation["Cross validation Rsquare"]= np.hstack(list_CVRsq)
+    # df_cross_validation["train set accuracy"] = np.hstack(list_tras)
+    # df_cross_validation["Analysis level"] = np.hstack(list_levelanalysis)
+    # df_cross_validation["Score hippomuse"] = np.hstack(list_score)
+    # df_cross_validation["test set total accuracy"] = np.hstack(list_teas)
+
 
     # Create the boxplot of accuracy distribution for model --> select only one score (ex.heure_2)
-    # A = np.vstack(list_tras)
-    # Z = pd.DataFrame(A)
-    # Z = Z.T
-    # Z.columns = ['min', 'median', 'mean', 'max', 'sum', 'variance']
-    # #Z.T.boxplot(vert=False)
+    list_tras = np.vstack(list_tras)
+    df_tras = pd.DataFrame(list_tras)
+    df_tras = df_tras.T
+    df_tras.columns = list_statistic
 
-    # fig, axes = plt.subplots(1, figsize=(8,4))
-    # df_tot_accu = pd.read_csv("Acurracy.csv")
-    # g = sns.violinplot(data=Z, orient="h", palette="Set2")
+    list_teas = np.vstack(list_teas)
+    df_teas = pd.DataFrame(list_teas)
+    df_teas= df_teas.T
+    df_teas.columns = list_statistic
+
+    fig, axes = plt.subplots(1, figsize=(8,4))
+
+    g = sns.violinplot(data=df_tras, orient="h", palette="Set2")
+    g = sns.boxplot(data=df_teas, orient="h", palette="Set2")
 
     # for tick in g.xaxis.get_major_ticks():
     #     tick.label.set_fontsize(30)
