@@ -23,6 +23,7 @@ from sklearn.cross_validation import train_test_split
 from sklearn.metrics import confusion_matrix
 from numpy import *
 import matplotlib.patches as mpatches
+import locale
 
 def read_roiLabel(xml_path):
     tree = ET.parse(xml_path)
@@ -141,7 +142,7 @@ def GLM (file, score, stat, ind_var, Level, betas=1):
 	# Select Variables
     Y = np.array(db[score])
     X = np.array(db[ind_var])
-
+    subjects_list = db[['patient', 'volumeCat', 'localisation1', 'localisation2', 'localisation3', 'volcat1','volcat2','volca3']]
 
     # Cross validation GLM LOOCV
     """tras = train accuracy test; teas=test accuray set"""
@@ -155,8 +156,10 @@ def GLM (file, score, stat, ind_var, Level, betas=1):
 
     for train_index, test_index in kf:
         olsmodel = sm.OLS(Y[train_index], X[train_index])
+
         results = olsmodel.fit()
         pred = np.dot(X[train_index], results.params)
+
         pred = np.round(pred)
         pred[pred < 0] = 0
         # No kids had more than 5 in P2
@@ -166,6 +169,7 @@ def GLM (file, score, stat, ind_var, Level, betas=1):
         cm = confusion_matrix(Y[train_index], pred)
         cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
         cm[isnan(cm)] = 0
+
         if cm.shape[0] == cm_shape_max:
             confus.append(cm)
 
@@ -173,6 +177,7 @@ def GLM (file, score, stat, ind_var, Level, betas=1):
         prediction = np.dot(X[test_index], results.params)
         predictions.append(prediction)
     predictions = np.ravel(predictions)
+
 
     confus = np.mean(confus, axis=0)
     plot_confusion_matrix(confus, title="Mean confusion matrix_" + stat + "_for_" + score)
@@ -221,21 +226,39 @@ def GLM (file, score, stat, ind_var, Level, betas=1):
 
     # RUN GLM
     model = sm.OLS(Y, X).fit()
-    pvals = model.pvalues
+    # accuracy_model = np.dot(X, model.params)
+    # accuracy_model = np.round(accuracy_model)
+    # accuracy_model[accuracy_model < 0] = 0
+    # test_accuracy = np.sum(Y == accuracy_model) / float(len(Y))
 
+
+    
+    pvals = model.pvalues
     pvals_fwer = multicomp.multipletests(pvals, alpha = 0.05, method = 'fdr_bh')
      
     #Save it into csv file
     df_final.loc[len(df_final)] = [score, stat, model.params, model.tvalues, model.pvalues, pvals_fwer[1], pvals_fwer[0], model.rsquared, model.bse]
     df_final.to_csv(os.path.join(stat,score, score + "_" + stat + "_" + Level + ".csv"))
     
+    model_stars=[]
     #check quickly if there is significant data
     for  idx, i in enumerate(model.pvalues):
-        if model.pvalues[i] < 0.05:
-            print (score+ " " + stat + " "+ Level + ind_var[idx] )
-            print (model.pvalues[idx])
+        if model.pvalues[i] > expm1(5e-2):
+            model_stars.append(" ")
+        if model.pvalues[i] < 1e-02:
+            model_stars.append("*")
+        if model.pvalues[i] < expm1(1e-2):
+            model_stars.append("**")
+        if model.pvalues[i] < expm1(1e-3):
+            model_stars.append("***")
 
-    betas_component = model.params[0:betas]
+
+
+
+        # print (score+ " " + stat + " "+ Level + ind_var[idx] )
+        # print (model.pvalues[idx])
+
+    betas_component = model.tvalues[0:betas]
 
     ### PLOT the T SCORES
     # Select the variable
@@ -256,14 +279,18 @@ def GLM (file, score, stat, ind_var, Level, betas=1):
 
     rects = rec.patches
     # Plot the pvalues
-    labels = ["p = %f" % i for i in model.pvalues]
+
+
+    labels = ["p = %s" % i for i in model.pvalues]
+
     for rect, label in zip(rects, labels):
         height = rect.get_height()
+
         ax.text(rect.get_x() + rect.get_width()/2, height + 2, label, ha='center', va='bottom', weight= 'light', size= 'xx-small')
     plt.savefig(os.path.join(stat, score, score + "_" + stat + "_" + brain_type + "_" + ".png"))
     plt.close()
 
-    return df_final, db, betas_component , pvals, cvrsq, tras, category, teas
+    return df_final, db, betas_component , pvals, cvrsq, tras, category, teas, subjects_list
 
 
 # Correlation function to annotate plots in Grids
@@ -273,10 +300,38 @@ def corrfunc(x, y, **kws):
     ax.annotate('r = {:.2f}'.format(r), xy=(.1,.9), xycoords=ax.transAxes)
     return ax
 
-def undestand_component(pca, RD, stat, betas_component,score):
+
+# Infer cmap from color
+def infer_cmap(color):
+    if color == (0., 0., 1.):
+        return 'Blues'
+    elif color == (0., 0.5, 0.):
+        return 'Greens'
+    elif color == (1., 0., 0.):
+        return 'Reds'
+    elif color == (0.75, 0., 0.75):
+        return 'Purples'
+
+
+# Add color hue to a kde plot
+def kde_hue(x, y, **kws):
+    ax = plt.gca()
+    cmap = infer_cmap(kws['color'])
+    sns.kdeplot(data=x, data2=y, ax=ax, shade=False, shade_lowest=False,
+                cmap=cmap, **kws)
+    return ax
+
+
+# point plot with names as dots
+def scatter_names(x, y, **kws):
+    ax = plt.gca()
+    plt.scatter(x=x, y=y, color=kws['color'])
+    return ax
+
+
+def undestand_component(pca, RD, stat, betas_component, score, subjects_list):
 
     # Histogram betas component back to the original space
-    
     roi_betas = pca.inverse_transform(betas_component)
     order = roi_betas.argsort()[::-1]
     roi_beta, x , ordlabel = plot_hist(roi_betas , stat, score, title="GLM")
@@ -323,8 +378,28 @@ def undestand_component(pca, RD, stat, betas_component,score):
     g = g.map_upper(plt.scatter)
     g = g.map_lower(sns.kdeplot)
     g = g.map_lower(corrfunc)
-    plt.savefig(os.path.join(stat,"PCA_compo_capturing_features_between_subject_" + stat + ".png"))
+    plt.savefig(os.path.join(stat,"PCA_components_relation_" + stat + ".png"))
     plt.close()
+
+    # Plot components relationship by variable category
+    subjects_list = subjects_list[subjects_list['volumeCat'] != '0']
+    subjects_list.index = range(len(subjects_list))
+    colors = ['b', 'g', 'r', 'm']
+    for var in subjects_list.columns[1:]:
+        # sub_ids = subjects_list['patient'].tolist()
+        # sub_selection = subjects_list[subjects_list[var] == cat]['patient']
+        compdf[var] = subjects_list[var]
+        color_dict = {}
+        for idx, v in enumerate(np.unique(subjects_list[var])):
+            color_dict[v] = colors[idx]
+        g = sns.PairGrid(compdf, hue=var, palette=color_dict)
+        g = g.map_diag(sns.kdeplot)
+        g = g.map_upper(plt.scatter)
+        g = g.map_lower(kde_hue)
+        g = g.add_legend()
+        plt.savefig(os.path.join(stat,"PCA_components_relation_" + stat + '_' + var + ".png"))
+        plt.close()
+
 
    # Plot linear regression of component on each ROI
     n_parts = 4
@@ -338,6 +413,7 @@ def undestand_component(pca, RD, stat, betas_component,score):
         g = sns.PairGrid(combineddf, x_vars=selecroi, y_vars=comp_columns)
         g = g.map(sns.regplot)
         g = g.map(corrfunc)
+
         plt.savefig(os.path.join(stat,"PCA_compo_roi_density_part_" + str(idx) + stat +  ".png"))
         plt.close()
 
@@ -353,6 +429,7 @@ def undestand_component(pca, RD, stat, betas_component,score):
         plt.subplots_adjust(bottom=0.40)
         plt.savefig(os.path.join(stat,"PCA_compo_roi_heatmap_"+ str(idx) + stat + score+".png"))
         plt.close()
+
     # # Plot heatmap of component and ROI correlations
     # n_parts = 2
     # for idx, i  in enumerate(range(n_parts)):
@@ -391,7 +468,7 @@ if __name__ == '__main__':
     list_teas=[]
 
 
-    for f in Files:
+    for f in Files[4:5]:
 
         stat = f.split('_')[4].split('.')[0]
         for score in Scores[9:10]:
@@ -399,95 +476,46 @@ if __name__ == '__main__':
                 brain_type = "presence"
                 radiotherapie =["radiotherapie"]
                 ind_var = clinical_variables + radiotherapie
-                df_final, db, betas_component , pvals, cvrsq, tras, category, teas = GLM (f, score, stat, ind_var, brain_type)
-
-        #         list_statistic.append(stat)
-        #         print list_statistic 
-        #         list_CVRsq.append(cvrsq)
-        #         list_tras.append(tras)
-        #         list_teas.append(teas)
-
-
-        #         # Create the boxplot of accuracy distribution for model --> select only one score (ex.heure_2)
-        # list_tras = np.vstack(list_tras)
-        # df_tras = pd.DataFrame(list_tras)
-        # df_tras = df_tras.T
-        # df_tras.columns = list_statistic
-
-        # list_teas = np.vstack(list_teas)
-        # df_teas = pd.DataFrame(list_teas)
-        # df_teas= df_teas.T
-        # df_teas.columns = list_statistic
-
-        # # Plot cross validation 
-        # fig, axes = plt.subplots(1, figsize=(8,4))
-        # g = sns.violinplot(data=df_tras, orient="h", palette="Set2")
-        # g = sns.boxplot(data=df_teas, orient="h", palette="Set2")
-
-        # for tick in g.xaxis.get_major_ticks():
-        #     tick.label.set_fontsize(30)
-        # for tick in g.yaxis.get_major_ticks():
-        #     tick.label.set_fontsize(30)
-        # g.legend(title=score, loc='upper left')
-        # plt.xlim(0.15,0.50)
-        # plt.show()
-
-
-
-    #     corr = plot_corr(f, score, stat, ind_var, brain_type)
-
-
-
-    #             # patient_effect = ["groupe","age"]
-    #             # df_final, db, betas_component , pvals, cvrsq, tas, category, teas = GLM (f, score, stat, patient_effect, brain_type)
-
-
-    #             # g= sns.lmplot(x="age", y=score, data=db, hue="groupe", markers=["o", "x"], palette=['b','g'])
-    #             # plt.tick_params(labelsize=30)
-    #             # g.set_ylabels("When at recognition",size =30,color="black")
-    #             # g.set_xlabels("Age",size =30,color="black")    
-    #             # plt.show()
-    #             # plt.savefig("Patient_effect_" + score + "_" + stat + "_" + ".png")
-    #             # plt.close()
+                df_final, db, betas_component , pvals, cvrsq, tras, category, teas, subjects_list = GLM (f, score, stat, ind_var, brain_type)
 
 
 
 
-    #         else:
+            else:
 
-    #             brain_type = f.split('_')[5].split('.')[0]
-    #             if brain_type == "atlas":
-    #                     save_to = os.path.join('preprocessed_hippomuse')
-    #                     save_name = (db_name + '_PCA_' + stat + '.pkl')
-    #                     save_name_rd = (db_name + '_RD_'+ stat + '.pkl')
-    #                     RD = joblib.load(os.path.join(save_to, save_name_rd))
-    #                     pca = joblib.load(os.path.join(save_to, save_name))
-    #                     print(stat )
+                brain_type = f.split('_')[5].split('.')[0]
+                if brain_type == "atlas":
+                        save_to = os.path.join('preprocessed_hippomuse')
+                        save_name = (db_name + '_PCA_' + stat + '.pkl')
+                        save_name_rd = (db_name + '_RD_'+ stat + '.pkl')
+                        RD = joblib.load(os.path.join(save_to, save_name_rd))
+                        pca = joblib.load(os.path.join(save_to, save_name))
+                        print(stat )
 
-    #                     # figure of explained variance ratio cumsum
-    #                     plt.plot(pca.explained_variance_ratio_.cumsum())
-    #                     plt.close()
-    #                     plt.savefig(os.path.join(stat, "PCA_explained_variance.png"))
+                        # figure of explained variance ratio cumsum
+                        plt.plot(pca.explained_variance_ratio_.cumsum())
+                        plt.close()
+                        plt.savefig(os.path.join(stat, "PCA_explained_variance.png"))
                         
 
 
-    #                     component_nb = [x+1 for x in range(len(pca.explained_variance_ratio_))]
-    #                     component_variables = ["component_0%s"%(i) for i in component_nb]
-    #                     ind_var = clinical_variables + component_variables
+                        component_nb = [x+1 for x in range(len(pca.explained_variance_ratio_))]
+                        component_variables = ["component_0%s"%(i) for i in component_nb]
+                        ind_var = clinical_variables + component_variables
 
-    #                     df_final, db, betas_component , pvals, cvrsq, tras, category, teas = GLM (f, score, stat, ind_var, brain_type, betas=len(pca.explained_variance_ratio_))
-    #                     undestand_component(pca, RD, stat, betas_component, score)
-                        
-
-
-    #                     list_statistic.append(stat)
-    #                     print list_statistic 
-    #                     list_CVRsq.append(cvrsq)
-    #                     list_tras.append(tras)
-    #                     list_teas.append(teas)
+                        df_final, db, betas_component , pvals, cvrsq, tras, category, teas, subjects_list = GLM (f, score, stat, ind_var, brain_type, betas=len(pca.explained_variance_ratio_))
+                        undestand_component(pca, RD, stat, betas_component, score, subjects_list)
 
 
-    # # Create the boxplot of accuracy distribution for model --> select only one score (ex.heure_2)
+
+                        list_statistic.append(stat)
+                        print list_statistic 
+                        list_CVRsq.append(cvrsq)
+                        list_tras.append(tras)
+                        list_teas.append(teas)
+
+
+    # Create the boxplot of accuracy distribution for model --> select only one score (ex.heure_2)
     # list_tras = np.vstack(list_tras)
     # df_tras = pd.DataFrame(list_tras)
     # df_tras = df_tras.T
@@ -510,8 +538,3 @@ if __name__ == '__main__':
     # g.legend(title=score, loc='upper left')
     # plt.xlim(0.15,0.50)
     # plt.show()
-
-
-
-
-   
